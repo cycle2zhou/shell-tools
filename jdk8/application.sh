@@ -48,6 +48,26 @@ function main() {
   last_dir=$(dirname "$prg")/..
   #应用运行空间
   app_workspace=$(cd "$last_dir" && pwd)
+  #日志保存目录
+  app_log_dir="${app_workspace}/logs"
+  #pid目录
+  app_pid_dir="${app_log_dir}/pid"
+  #控制台输出文件
+  app_nohup_file="${app_name}.out"
+  #应用pid记录文件
+  app_pid_file="${app_name}.pid"
+  #创建pid存放目录
+  mkdir -p "${app_pid_dir}"
+  #创建GC日志目录
+  mkdir -p "${app_log_dir}/gc"
+  #隐藏光标
+  c_hide_cursor='\033[?25l'
+  #显示光标
+  c_show_cursor='\033[?25h'
+  #信号状态;0-初始状态，1-启动完成，2-退出
+  signal_status=0
+  #启动状态码；0-启动中，1-启动成功，2-启动失败
+  start_status=0
   #脚本自身的pid
   self_pid=$$
 
@@ -90,9 +110,17 @@ function main() {
   -Djava.security.egd=file:/dev/./urandom
   -XX:+HeapDumpOnOutOfMemoryError
   -Dapp.runtime.type=jar
+  -Dapp.nohup.out.path=${app_log_dir:?}/${app_nohup_file:?}
+  -Dapp.gc.log.path=${app_log_dir}/gc
+  -Dapp.workspace.path=${app_workspace}
   -Djasypt.encryptor.password=$([ -z "${JASYPT_ENCRYPTOR_PASSWORD}" ] && echo "${jasypt_master_password}" || echo "${JASYPT_ENCRYPTOR_PASSWORD}")
   -Dapp.gc.log.period=${app_gc_log_period}
-  -Dlogging.config=${app_workspace}/conf/logback-spring.xml"
+  -Xloggc:${app_log_dir}/gc/gc-%t.log
+  -Dloader.path=${app_workspace}/lib
+  -Dlogging.file.path=${app_log_dir}
+  -Dlogging.config=${app_workspace}/conf/logback-spring.xml
+  -Dspring.config.location=${app_workspace}/conf/
+  -Dspring.pid.file=${app_pid_dir}/${app_pid_file}"
 
   #============================初始化变量结束============================
   #JDK没安装直接退出
@@ -147,26 +175,6 @@ function main() {
   fi
   echo
   fixed-out "应用环境检测，结束"
-  #日志保存目录
-  app_log_dir="${app_workspace}/logs"
-  #pid目录
-  app_pid_dir="${app_log_dir}/pid"
-  #控制台输出文件
-  app_nohup_file="${app_name}.out"
-  #应用pid记录文件
-  app_pid_file="${app_name}.pid"
-  #创建pid存放目录
-  mkdir -p "${app_pid_dir}"
-  #创建GC日志目录
-  mkdir -p "${app_log_dir}/gc"
-  #隐藏光标
-  c_hide_cursor='\033[?25l'
-  #显示光标
-  c_show_cursor='\033[?25h'
-  #信号状态;0-初始状态，1-启动完成，2-退出
-  signal_status=0
-  #启动状态码；0-启动中，1-启动成功，2-启动失败
-  start_status=0
 
   #启动成功信号
   trap 'signal_started' HUP
@@ -281,13 +289,10 @@ function start() {
   fi
   fixed-out "JVM参数配置，开始"
   #设置java启动参数
-  java_jvm_opts="${java_jvm_opts} -Xloggc:${app_log_dir}/gc/gc-%t.log -Dloader.path=${app_workspace}/lib -Dlogging.file.path=${app_log_dir} -Dapp.nohup.out.path=${app_log_dir:?}/${app_nohup_file:?} -Dapp.gc.log.path=${app_log_dir}/gc -Dapp.workspace.path=${app_workspace}"
   if [[ ${debug} == true ]]; then
     info "启动调试模式,端口:${debug_port}"
     java_jvm_opts="${java_jvm_opts} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${debug_port}"
   fi
-  #外置配置文件和pid文件
-  java_jvm_opts="${java_jvm_opts} -Dspring.config.location=${app_workspace}/conf/ -Dspring.pid.file=${app_pid_dir}/${app_pid_file}"
   #监控
   apm
   #换行和去除空行输出所有jvm参数
