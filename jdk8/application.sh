@@ -141,7 +141,7 @@ function main() {
     rpm -ivh "${app_workspace}/depend/rpm/psmisc-22.20-17.el7.x86_64.rpm"
     info "fuser命令安装完成,继续执行中..."
   fi
-  fixed-out "应用环境检测，开始"
+  fixed_out "应用环境检测，开始"
   echo
   java -version
   echo
@@ -155,7 +155,7 @@ function main() {
   service_path_array=(${service_path//.jar/ })
   if [[ ${#service_path_array[*]} -gt 1 ]]; then
     warn "目录[${app_workspace}/app]下找到多个应用jar包,无法确定运行目标"
-    fixed-out "应用环境检测，结束"
+    fixed_out "应用环境检测，结束"
     exit
   fi
   info "应用Jar包路径: ${service_path}"
@@ -174,7 +174,7 @@ function main() {
     done
   fi
   echo
-  fixed-out "应用环境检测，结束"
+  fixed_out "应用环境检测，结束"
 
   #启动成功信号
   trap 'signal_started' HUP
@@ -214,7 +214,7 @@ function main() {
 }
 
 #固定长度输出，不能包含空格
-function fixed-out() {
+function fixed_out() {
   local total_length input_str str_width padding left_padding right_padding
   # 固定的总长度
   total_length=$(fixed_with)
@@ -287,7 +287,7 @@ function start() {
     warn "未找到应用启动jar包,请检查[app]目录"
     return
   fi
-  fixed-out "JVM参数配置，开始"
+  fixed_out "JVM参数配置，开始"
   #设置java启动参数
   if [[ ${debug} == true ]]; then
     info "启动调试模式,端口:${debug_port}"
@@ -298,9 +298,9 @@ function start() {
   #换行和去除空行输出所有jvm参数
   echo -e "\033[0;34m${java_jvm_opts}\033[0m" | tr ' ' '\n' | tr -s '\n'
   echo
-  fixed-out "JVM参数配置，结束"
+  fixed_out "JVM参数配置，结束"
   echo
-  fixed-out "启动应用，开始"
+  fixed_out "启动应用，开始"
   #保证应用实时日志文件不存在
   rm -f "${app_log_dir:?}/${app_nohup_file:?}"
   if [[ ${mode} == "auto" ]]; then
@@ -308,7 +308,7 @@ function start() {
     # shellcheck disable=SC2086
     java ${java_jvm_opts} -jar ${service_path}
     echo
-    fixed-out "启动应用，结束"
+    fixed_out "启动应用，结束"
     return
   fi
   #重置信号状态
@@ -390,7 +390,7 @@ function check_started() {
 
 #后台启动完成
 function nohup_start_done() {
-  fixed-out "启动应用，完成"
+  fixed_out "启动应用，完成"
   if ! ps -p "$tail_log_pid" >/dev/null 2>&1; then
     return
   fi
@@ -511,22 +511,22 @@ function fixed_with() {
 
 #打印实时日志
 function show_log() {
-  fixed-out "打印实时日志，开始"
+  fixed_out "打印实时日志，开始"
   if ! exist; then
     info ">>> 应用 ${app_name} 未运行 <<<"
   else
     #控制台输出实时日志
     tail -f "${app_log_dir}/${app_nohup_file}"
   fi
-  fixed-out "打印实时日志，结束"
+  fixed_out "打印实时日志，结束"
 }
 
 #停止方法
 function stop() {
-  fixed-out "关闭应用，开始"
+  fixed_out "关闭应用，开始"
   if ! exist; then
     info ">>> 应用 ${app_name} 未运行 <<<"
-    fixed-out "关闭应用，完成"
+    fixed_out "关闭应用，完成"
     return
   fi
   #检测bc命令是否安装
@@ -583,33 +583,33 @@ function stop() {
     info "应用 ${app_name} 已停止,PID=${java_temp_pid}"
     clean_app
   fi
-  fixed-out "关闭应用，完成"
+  fixed_out "关闭应用，完成"
 }
 
 #输出运行状态
 function status() {
-  fixed-out "查询应用状态，开始"
+  fixed_out "查询应用状态，开始"
   if exist; then
     info ">>> 应用 ${app_name} 正在运行 PID = ${java_pid} <<<"
   else
     info ">>> 应用 ${app_name} 未运行 <<<"
   fi
-  fixed-out "查询应用状态，完成"
+  fixed_out "查询应用状态，完成"
 }
 
 #重启
 function restart() {
-  fixed-out "重启应用，开始"
+  fixed_out "重启应用，开始"
   stop
   sleep 1
   echo
   start
-  fixed-out "重启应用，完成"
+  fixed_out "重启应用，完成"
 }
 
 #上线
 function push() {
-  fixed-out "上线应用，开始"
+  fixed_out "上线应用，开始"
   local count_jar push_jar_name
   count_jar=$(find "${app_workspace}/release/" -name "*.jar" | wc -l)
   if [[ ${count_jar} -gt 1 ]]; then
@@ -634,12 +634,12 @@ function push() {
     echo
     start
   fi
-  fixed-out "上线应用，完成"
+  fixed_out "上线应用，完成"
 }
 
 #回滚
 function rollback() {
-  fixed-out "回滚应用，开始"
+  fixed_out "回滚应用，开始"
   last_backup_suffix=$(find "${app_workspace}/backup/" -type f -name "*.jar_*" -exec basename {} \; 2>/dev/null | cut -d'_' -f2 | sort -n | tail -n 1)
   if [[ -z ${last_backup_suffix} ]]; then
     warn "未找到历史备份JAR包"
@@ -650,7 +650,7 @@ function rollback() {
     echo
     start
   fi
-  fixed-out "回滚应用，完成"
+  fixed_out "回滚应用，完成"
 }
 #删除jar
 function rm_jar() {
