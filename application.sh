@@ -28,6 +28,10 @@ function main() {
   readonly debug=false
   #调试端口
   readonly debug_port=5555
+  #是否记录gc日志
+  readonly gc_log_enabled=true
+  #应用gc日志保存周期,为空则不清理过期日志;单位:天
+  local app_gc_log_period=60
   #启动模式，可选值：service[服务模式,默认],auto[自动模式，即前台模式，关闭ssh连接就会停止服务]
   readonly mode=service
   #应用关闭等待时间,单位秒
@@ -36,8 +40,8 @@ function main() {
   readonly started_success_message="Application started successfully By Jar"
   #应用jasypt主密码;可以设置服务器环境变量[JASYPT_ENCRYPTOR_PASSWORD]覆盖,同时设置优先使用服务器环境变量值
   local jasypt_master_password=123456
-  #应用gc日志保存周期,为空则不清理过期日志;单位:天
-  local app_gc_log_period=60
+  #java安装目录，不设置自动通过"$(readlink -f "$(which java)")"获取环境变量；指定到**/bin/java
+  readonly java_path="$(readlink -f "$(which java)")"
   #防止jenkins杀进程
   export JENKINS_NODE_COOKIE=dontKillMe
 
@@ -81,10 +85,6 @@ function main() {
   #-XX:SurvivorRatio=8 （新生代分区比例 8:2）
   #-XX:+UseG1GC （指定使用的垃圾收集器，这里使用G1收集器）
   #-XX:+UseStringDeduplication (开启字符串去重)
-  #-XX:+PrintGCDetails （打印详细的GC日志）
-  #-Xloggc:/path/to/gc-%t.log (GC日志输出的文件路径)
-  #-XX:+UseGCLogFileRotation (开启日志文件分割)
-  #-XX:NumberOfGCLogFiles=14 (最多分割几个文件，超过之后从头文件开始写)
   #-XX:GCLogFileSize=100M (每个文件上限大小，超过就触发分割)
   java_jvm_opts="
   -server
@@ -98,11 +98,6 @@ function main() {
   -XX:+UnlockExperimentalVMOptions
   -XX:+UseG1GC
   -XX:+UseStringDeduplication
-  -XX:+PrintGCDetails
-  -XX:+PrintGCDateStamps
-  -XX:+UseGCLogFileRotation
-  -XX:NumberOfGCLogFiles=10
-  -XX:GCLogFileSize=100M
   -Djava.net.preferIPv4Stack=true
   -Duser.timezone=Asia/Shanghai
   -Dclient.encoding.override=UTF-8
@@ -110,21 +105,20 @@ function main() {
   -Djava.security.egd=file:/dev/./urandom
   -XX:+HeapDumpOnOutOfMemoryError
   -Dapp.runtime.type=jar
+  -Dapp.gc.log.period=${app_gc_log_period}
   -Dapp.nohup.out.path=${app_log_dir:?}/${app_nohup_file:?}
   -Dapp.gc.log.path=${app_log_dir}/gc
   -Dapp.workspace.path=${app_workspace}
   -Djasypt.encryptor.password=$([ -z "${JASYPT_ENCRYPTOR_PASSWORD}" ] && echo "${jasypt_master_password}" || echo "${JASYPT_ENCRYPTOR_PASSWORD}")
-  -Dapp.gc.log.period=${app_gc_log_period}
-  -Xloggc:${app_log_dir}/gc/gc-%t.log
-  -Dloader.path=${app_workspace}/lib
-  -Dlogging.file.path=${app_log_dir}
   -Dlogging.config=${app_workspace}/conf/logback-spring.xml
+  -Dlogging.file.path=${app_log_dir}
+  -Dloader.path=${app_workspace}/lib
   -Dspring.config.location=${app_workspace}/conf/
   -Dspring.pid.file=${app_pid_dir}/${app_pid_file}"
 
   #============================初始化变量结束============================
   #JDK没安装直接退出
-  if ! [[ -x "$(command -v java)" ]]; then
+  if ! [[ -x "$(command -v "$java_path")" ]]; then
     warn "缺少Java运行环境,请检查Jdk或Jre"
     exit 1
   fi
@@ -143,7 +137,8 @@ function main() {
   fi
   fixed_out "应用环境检测，开始"
   echo
-  java -version
+  #输出java详细版本信息
+  $java_path -version
   echo
   info "应用名称: ${app_name}"
   if [[ $debug == true ]]; then
@@ -211,6 +206,42 @@ function main() {
 
   exit 0
 
+}
+
+#追加gc日志配置
+function append_gc_log() {
+  local java_version
+  # 获取 Java 版本
+  java_version=$($java_path -version 2>&1 | head -n 1)
+  # 提取版本号
+  if [[ "$java_version" =~ version\ \"1\.(5|6|7|8) ]]; then
+      # 如果版本在 5-8 之间
+     java_jvm_opts="$java_jvm_opts  -Xloggc:${app_log_dir}/gc/gc_%t_%p.log  -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M"
+  elif [[ "$java_version" =~ version\ \"([9-9]|[1-9][0-9]+) ]]; then
+      # 如果版本是 9 或以上
+      java_jvm_opts="$java_jvm_opts  -Xlog:async -Xlog:gc*:file=${app_log_dir}/gc/gc_%t_%p.log:uptimemillis,hostname,pid:filecount=10,filesize=100m"
+  else
+      # 其他情况
+      echo "Java version is not within the expected range."
+  fi
+}
+
+#追加debug参数
+function append_debug() {
+  local java_version
+  # 获取 Java 版本
+  java_version=$($java_path -version 2>&1 | head -n 1)
+  # 提取版本号
+  if [[ "$java_version" =~ version\ \"1\.(5|6|7|8) ]]; then
+      # 如果版本在 5-8 之间
+      java_jvm_opts="${java_jvm_opts} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${debug_port}"
+  elif [[ "$java_version" =~ version\ \"([9-9]|[1-9][0-9]+) ]]; then
+      # 如果版本是 9 或以上
+      java_jvm_opts="${java_jvm_opts} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${debug_port}"
+  else
+      # 其他情况
+      echo "Java version is not within the expected range."
+  fi
 }
 
 #固定长度输出，不能包含空格
@@ -288,10 +319,13 @@ function start() {
     return
   fi
   fixed_out "JVM参数配置，开始"
-  #设置java启动参数
+  if [[ ${gc_log_enabled} == true ]]; then
+    info "追加gc日志配置"
+    append_gc_log
+  fi
   if [[ ${debug} == true ]]; then
     info "启动调试模式,端口:${debug_port}"
-    java_jvm_opts="${java_jvm_opts} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${debug_port}"
+    append_debug
   fi
   #监控
   apm
@@ -306,7 +340,7 @@ function start() {
   if [[ ${mode} == "auto" ]]; then
     #前台模式启动
     # shellcheck disable=SC2086
-    java ${java_jvm_opts} -jar ${service_path}
+    $java_path ${java_jvm_opts} -jar ${service_path}
     echo
     fixed_out "启动应用，结束"
     return
@@ -315,7 +349,7 @@ function start() {
   signal_status=0
   #后台模式启动
   # shellcheck disable=SC2086
-  nohup java ${java_jvm_opts} -jar ${service_path} --app_start_sh_pid=${self_pid} >>${app_log_dir:?}/${app_nohup_file:?} 2>&1 &
+  nohup $java_path ${java_jvm_opts} -jar ${service_path} --app_start_sh_pid=${self_pid} >>${app_log_dir:?}/${app_nohup_file:?} 2>&1 &
   #获取java程序的pid
   java_pid=$!
   local app_pid show start_log tail_log_pid
