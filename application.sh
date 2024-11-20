@@ -41,6 +41,7 @@ function main() {
   #应用jasypt主密码;可以设置服务器环境变量[JASYPT_ENCRYPTOR_PASSWORD]覆盖,同时设置优先使用服务器环境变量值
   local jasypt_master_password=123456
   #java安装目录，不设置自动通过"$(readlink -f "$(which java)")"获取环境变量；指定到**/bin/java
+  # shellcheck disable=SC2155
   readonly java_path="$(readlink -f "$(which java)")"
   #防止jenkins杀进程
   export JENKINS_NODE_COOKIE=dontKillMe
@@ -352,7 +353,7 @@ function start() {
   nohup $java_path ${java_jvm_opts} -jar ${service_path} --app_start_sh_pid=${self_pid} >>${app_log_dir:?}/${app_nohup_file:?} 2>&1 &
   #获取java程序的pid
   java_pid=$!
-  local app_pid show start_log tail_log_pid
+  local app_pid show start_log
   #判断当前应用是否有pid生成
   app_pid=$(find "${app_pid_dir}" -name "${app_pid_file}")
   if [[ -z ${app_pid} ]]; then
