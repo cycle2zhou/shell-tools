@@ -493,6 +493,7 @@ function apm() {
 #启动成功信息
 #shellcheck disable=SC2317
 function signal_started() {
+  echo
   #设置脚本状态
   signal_status=1
   #设置启动状态
@@ -502,6 +503,7 @@ function signal_started() {
 #退出信号
 #shellcheck disable=SC2317
 function signal_quit() {
+  echo
   #设置脚本状态
   signal_status=2
   local fuser_output pid_array pid multiple_use
