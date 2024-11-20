@@ -550,7 +550,7 @@ function fixed_with() {
 function show_log() {
   fixed_out "打印实时日志，开始"
   if ! exist; then
-    info ">>> 应用 ${app_name} 未运行 <<<"
+    info "应用 ${app_name} 未运行"
   else
     #控制台输出实时日志
     tail -f "${app_log_dir}/${app_nohup_file}"
@@ -562,7 +562,7 @@ function show_log() {
 function stop() {
   fixed_out "关闭应用，开始"
   if ! exist; then
-    info ">>> 应用 ${app_name} 未运行 <<<"
+    info "应用 ${app_name} 未运行"
     fixed_out "关闭应用，完成"
     return
   fi
@@ -627,9 +627,9 @@ function stop() {
 function status() {
   fixed_out "查询应用状态，开始"
   if exist; then
-    info ">>> 应用 ${app_name} 正在运行 PID = ${java_pid} <<<"
+    info "应用 ${app_name} 正在运行 PID = ${java_pid}"
   else
-    info ">>> 应用 ${app_name} 未运行 <<<"
+    info "应用 ${app_name} 未运行"
   fi
   fixed_out "查询应用状态，完成"
 }
