@@ -15,7 +15,7 @@ function usage() {
 function main() {
   #============================初始化变量开始============================
   #必需:应用名,pid目录和性能监控中心都需要用到此名，对应：spring.application.name
-  readonly app_name=demo
+  local app_name=""
   #性能监控中心开关
   readonly apm_server_enabled=false
   #性能监控中心应用分组
@@ -57,10 +57,8 @@ function main() {
   app_log_dir="${app_workspace}/logs"
   #pid目录
   app_pid_dir="${app_log_dir}/pid"
-  #控制台输出文件
-  app_nohup_file="${app_name}.out"
-  #应用pid记录文件
-  app_pid_file="${app_name}.pid"
+  #控制台输出文件和应用pid记录文件暂时不初始化，等应用名确定后再设置
+
   #创建pid存放目录
   mkdir -p "${app_pid_dir}"
   #创建GC日志目录
@@ -75,6 +73,31 @@ function main() {
   start_status=0
   #脚本自身的pid
   self_pid=$$
+
+  #检查应用名
+  if [[ -z $app_name ]]; then
+    warn "未配置应用名，请输入应用名称"
+    read -r -p "请输入应用名称: " app_name
+    if [[ -z $app_name ]]; then
+      warn "应用名不能为空，退出程序"
+      exit 1
+    fi
+    info "已设置应用名称: ${app_name}"
+
+    # 将应用名保存到脚本文件中，替换local app_name=""这一行
+    # 获取脚本自身完整路径
+    script_path=$(readlink -f "$0")
+    # 使用sed替换应用名定义行，既处理空值也处理已有值的情况
+    sed -i "s/local app_name=\".*\"/local app_name=\"${app_name}\"/" "${script_path}"
+    info "已将应用名保存到脚本中，下次运行将自动使用"
+  fi
+
+  # 将应用名设为只读，防止后续修改
+  readonly app_name
+
+  #设置控制台输出文件和pid文件名
+  app_nohup_file="${app_name}.out"
+  app_pid_file="${app_name}.pid"
 
   #JVM虚拟机参数
   #-XX:MetaspaceSize=128m （元空间默认大小）
@@ -121,12 +144,6 @@ function main() {
   #JDK没安装直接退出
   if ! [[ -x "$(command -v "$java_path")" ]]; then
     warn "缺少Java运行环境,请检查Jdk或Jre"
-    exit 1
-  fi
-
-  #检查应用名
-  if [[ -z $app_name ]]; then
-    warn "未配置应用名,请检查应用名"
     exit 1
   fi
 
