@@ -287,7 +287,7 @@ function check_running() {
     java_pid=$(head -1 "${pid_file}" 2>/dev/null) # 增加错误处理，避免文件为空导致的问题
   elif [[ -n ${service_path} ]]; then
     # 使用正则确保路径完整匹配（避免子目录或相似路径误判）
-    java_pid=$(pgrep -f "java.*(^|/)${service_path//\//\\/}($|/| )" 2>/dev/null)
+    java_pid=$(pgrep -f "java.*${service_path}" 2>/dev/null)
   fi
 
   # 检查PID是否有效
