@@ -131,11 +131,7 @@ function main() {
   fi
 
   #检查fuser命令,代码中清理nohup.out需要该命令
-  if ! [[ -x "$(command -v fuser)" ]]; then
-    warn "fuser命令未安装,准备安装fuser命令..."
-    rpm -ivh "${app_workspace}/depend/rpm/psmisc-22.20-17.el7.x86_64.rpm"
-    info "fuser命令安装完成,继续执行中..."
-  fi
+  install_command "fuser" "${app_workspace}/depend/rpm/psmisc-22.20-17.el7.x86_64.rpm" "psmisc"
   fixed_out "应用环境检测，开始"
   echo
   #输出java详细版本信息
@@ -148,7 +144,7 @@ function main() {
   info "应用工作目录: ${app_workspace}"
   service_path=$(find "${app_workspace}/app" -name "*.jar")
   # shellcheck disable=SC2206
-  service_path_array=(${service_path//.jar/ })
+  service_path_array=("${service_path//.jar/}")
   if [[ ${#service_path_array[*]} -gt 1 ]]; then
     warn "目录[${app_workspace}/app]下找到多个应用jar包,无法确定运行目标"
     fixed_out "应用环境检测，结束"
@@ -215,15 +211,15 @@ function append_gc_log() {
   # 获取 Java 版本
   java_version=$($java_path -version 2>&1 | head -n 1)
   # 提取版本号
-  if [[ "$java_version" =~ version\ \"1\.(5|6|7|8) ]]; then
-      # 如果版本在 5-8 之间
-     java_jvm_opts="$java_jvm_opts  -Xloggc:${app_log_dir}/gc/gc_%t_%p.log  -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M"
-  elif [[ "$java_version" =~ version\ \"([9-9]|[1-9][0-9]+) ]]; then
-      # 如果版本是 9 或以上
-      java_jvm_opts="$java_jvm_opts  -Xlog:async -Xlog:gc*:file=${app_log_dir}/gc/gc_%t_%p.log:uptimemillis,hostname,pid:filecount=10,filesize=100m"
+  if [[ $java_version =~ version\ \"1\.(5|6|7|8) ]]; then
+    # 如果版本在 5-8 之间
+    java_jvm_opts="$java_jvm_opts  -Xloggc:${app_log_dir}/gc/gc_%t_%p.log  -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100M"
+  elif [[ $java_version =~ version\ \"([9-9]|[1-9][0-9]+) ]]; then
+    # 如果版本是 9 或以上
+    java_jvm_opts="$java_jvm_opts  -Xlog:async -Xlog:gc*:file=${app_log_dir}/gc/gc_%t_%p.log:uptimemillis,hostname,pid:filecount=10,filesize=100m"
   else
-      # 其他情况
-      echo "Java version is not within the expected range."
+    # 其他情况
+    echo "Java version is not within the expected range."
   fi
 }
 
@@ -233,15 +229,15 @@ function append_debug() {
   # 获取 Java 版本
   java_version=$($java_path -version 2>&1 | head -n 1)
   # 提取版本号
-  if [[ "$java_version" =~ version\ \"1\.(5|6|7|8) ]]; then
-      # 如果版本在 5-8 之间
-      java_jvm_opts="${java_jvm_opts} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${debug_port}"
-  elif [[ "$java_version" =~ version\ \"([9-9]|[1-9][0-9]+) ]]; then
-      # 如果版本是 9 或以上
-      java_jvm_opts="${java_jvm_opts} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${debug_port}"
+  if [[ $java_version =~ version\ \"1\.(5|6|7|8) ]]; then
+    # 如果版本在 5-8 之间
+    java_jvm_opts="${java_jvm_opts} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${debug_port}"
+  elif [[ $java_version =~ version\ \"([9-9]|[1-9][0-9]+) ]]; then
+    # 如果版本是 9 或以上
+    java_jvm_opts="${java_jvm_opts} -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:${debug_port}"
   else
-      # 其他情况
-      echo "Java version is not within the expected range."
+    # 其他情况
+    echo "Java version is not within the expected range."
   fi
 }
 
@@ -249,7 +245,7 @@ function append_debug() {
 function fixed_out() {
   local total_length input_str str_width padding left_padding right_padding
   # 固定的总长度
-  total_length=$(fixed_with)
+  total_length=$(fixed_width)
   # 传入的字符串
   input_str="$1"
   # 获取字符串的实际宽度（考虑多字节字符）
@@ -278,40 +274,46 @@ function warn() {
 }
 
 #检查程序是否在运行
-function exist() {
+function check_running() {
   local pid_file
-  #获取项目的pid文件
+  # 获取项目的pid文件
   pid_file=$(find "${app_pid_dir}" -name "${app_pid_file}")
+
+  # 初始化java_pid为空
+  java_pid=""
+
+  # 优先从PID文件获取PID
   if [[ -n ${pid_file} ]]; then
-    java_pid=$(head -1 "${pid_file}")
-  elif [ -n "${service_path}" ]; then
-    #使用命令即时查找
-    java_pid=$(pgrep -f "${service_path}")
+    java_pid=$(head -1 "${pid_file}" 2>/dev/null) # 增加错误处理，避免文件为空导致的问题
+  elif [[ -n ${service_path} ]]; then
+    # 使用正则确保路径完整匹配（避免子目录或相似路径误判）
+    java_pid=$(pgrep -f "java.*(^|/)${service_path//\//\\/}($|/| )" 2>/dev/null)
   fi
 
-  #pid不存在
-  if [[ -z $java_pid ]]; then
-    return 1
+  # 检查PID是否有效
+  if [[ -z ${java_pid} ]]; then
+    return 1 # PID不存在
   fi
 
-  #检测pid是否正在运行
-  if ps -p "${java_pid}" >/dev/null; then
+  # 检测PID对应的进程是否正在运行
+  if ps -p "${java_pid}" >/dev/null 2>&1; then
+    # 若PID文件不存在，创建PID文件
     if [[ -z ${pid_file} ]]; then
       echo "${java_pid}" >>"${app_pid_dir}/${app_pid_file}"
     fi
-    return 0
+    return 0 # 进程存在
   else
+    # 清理无效的PID文件
     if [[ -n ${pid_file} ]]; then
-      #pid文件中的pid无效则清理掉
-      rm -f "${pid_file:?}"
+      rm -f "${pid_file:?}" # :?确保变量非空才执行，避免误删
     fi
-    return 1
+    return 1 # 进程不存在
   fi
 }
 
 #启动方法
 function start() {
-  if exist; then
+  if check_running; then
     info "应用 ${app_name} 已经在运行中, PID=${java_pid}"
     return
   fi
@@ -329,7 +331,7 @@ function start() {
     append_debug
   fi
   #监控
-  apm
+  configure_apm
   #换行和去除空行输出所有jvm参数
   echo -e "\033[0;34m${java_jvm_opts}\033[0m" | tr ' ' '\n' | tr -s '\n'
   echo
@@ -373,7 +375,7 @@ function start() {
       nohup_start_done
       return
     fi
-    if exist; then
+    if check_running; then
       info "应用 ${app_name} 未获取到启动完成信号,请根据日志判断是否启动成功"
       echo
       nohup_start_done
@@ -466,19 +468,15 @@ function start_loading() {
 }
 
 #监控中心
-function apm() {
+function configure_apm() {
   if [[ ${apm_server_enabled} == false ]]; then
     return
   fi
   #分割ip和端口
   # shellcheck disable=SC2206
   local array=(${apm_server//:/ })
-  #检测nc命令是否安装
-  if ! [[ -x "$(command -v nc)" ]]; then
-    warn "nc命令未安装,准备安装nc命令..."
-    rpm -ivh "${app_workspace}/depend/rpm/nc-1.84-24.el6.x86_64.rpm"
-    info "nc命令安装完成,继续执行中..."
-  fi
+  # 安装nc命令（用于端口检测）
+  install_command "nc" "${app_workspace}/depend/rpm/nc-1.84-24.el6.x86_64.rpm" "nc"
   #检测AMP是否连接通畅
   info "开始检测APM性能监控中心连接性,请等待..."
   echo
@@ -527,6 +525,46 @@ function signal_quit() {
   : >"${app_log_dir}/${app_nohup_file}"
 }
 
+# 安装命令（优先包管理器，失败则用rpm）
+function install_command() {
+  local cmd_name=$1
+  local rpm_path=$2
+  local pkg_name=${3:-$1} # 包名默认与命令名相同
+
+  # 检查命令是否已安装
+  if command -v "$cmd_name" &>/dev/null; then
+    return 0
+  fi
+
+  warn "未检测到${cmd_name}命令，尝试安装..."
+
+  # 优先使用系统包管理器安装
+  if command -v yum &>/dev/null; then
+    info "使用yum安装${pkg_name}..."
+    if yum install -y "$pkg_name"; then
+      info "${cmd_name}安装成功"
+      return 0
+    fi
+  elif command -v apt-get &>/dev/null; then
+    info "使用apt-get安装${pkg_name}..."
+    if apt-get install -y "$pkg_name"; then
+      info "${cmd_name}安装成功"
+      return 0
+    fi
+  fi
+
+  # 包管理器安装失败，使用rpm兜底
+  if [[ -f $rpm_path ]]; then
+    info "使用rpm安装${cmd_name}..."
+    if rpm -ivh "$rpm_path"; then
+      info "${cmd_name}安装成功"
+      return 0
+    fi
+  fi
+
+  error_exit "${cmd_name}安装失败，请手动安装"
+}
+
 #清理应用临时文件
 function clean_app() {
   #删除应用的pid文件
@@ -536,12 +574,12 @@ function clean_app() {
 }
 
 #计算固定宽度
-function fixed_with() {
+function fixed_width() {
   local width result
   # 获取终端宽度
   width=$(tput cols)
   #计算宽度
-  result=$(echo "scale=0; $width * 0.8 / 1" | bc)
+  result=$(echo "scale=0; $width * 0.9 / 1" | bc)
   # 返回结果
   echo "$result"
 }
@@ -549,7 +587,7 @@ function fixed_with() {
 #打印实时日志
 function show_log() {
   fixed_out "打印实时日志，开始"
-  if ! exist; then
+  if ! check_running; then
     info "应用 ${app_name} 未运行"
   else
     #控制台输出实时日志
@@ -561,17 +599,13 @@ function show_log() {
 #停止方法
 function stop() {
   fixed_out "关闭应用，开始"
-  if ! exist; then
+  if ! check_running; then
     info "应用 ${app_name} 未运行"
     fixed_out "关闭应用，完成"
     return
   fi
   #检测bc命令是否安装
-  if ! [[ -x "$(command -v bc)" ]]; then
-    warn "bc命令未安装,准备安装bc命令..."
-    rpm -ivh "${app_workspace}/depend/rpm/bc-1.06.95-13.el7.x86_64.rpm"
-    info "bc命令安装完成,继续执行中..."
-  fi
+  install_command "bc" "${app_workspace}/depend/rpm/bc-1.06.95-13.el7.x86_64.rpm" "bc"
   #暂存应用pid值
   local java_temp_pid=${java_pid}
   #停止应用
@@ -583,7 +617,7 @@ function stop() {
   echo -en "${c_hide_cursor}"
   #进度条显示内容
   #local total_dy="$(($(stty size | cut -d' ' -f1)))" #进度条显示的y轴位置在最底部
-  total_dx=$(fixed_with)
+  total_dx=$(fixed_width)
   head=">>> 应用 ${app_name} 正在停机: "
   head_width=$(printf "%s" "$head" | wc -c)
   total=$((total_dx - head_width + 6))
@@ -591,7 +625,7 @@ function stop() {
     if [[ $signal_status -eq 2 ]]; then
       break
     fi
-    if ! exist; then
+    if ! check_running; then
       i=100
     fi
     local per=$((i * total / 100))
@@ -607,7 +641,7 @@ function stop() {
   echo -en "${c_show_cursor}"
   echo
   #再次检查pid是否存在,如果pid经过关闭时间等待后依然存在，标示应用无法正常关闭
-  if exist; then
+  if check_running; then
     read -r -t 10 -p "进程无法正常停止,是否强制停止(y[默认]/n):" die
     if [[ ${die} == "y" ]] || [[ ${die} == "Y" ]] || [[ -z ${die} ]]; then
       kill -9 "${java_temp_pid}"
@@ -626,7 +660,7 @@ function stop() {
 #输出运行状态
 function status() {
   fixed_out "查询应用状态，开始"
-  if exist; then
+  if check_running; then
     info "应用 ${app_name} 正在运行 PID = ${java_pid}"
   else
     info "应用 ${app_name} 未运行"
