@@ -131,7 +131,7 @@ function main() {
   fi
 
   #检查fuser命令,代码中清理nohup.out需要该命令
-  install_command "fuser" "${app_workspace}/depend/rpm/psmisc-22.20-17.el7.x86_64.rpm" "psmisc"
+  ensure_command "fuser" "${app_workspace}/depend/rpm/psmisc-22.20-17.el7.x86_64.rpm" "psmisc"
   fixed_out "应用环境检测，开始"
   echo
   #输出java详细版本信息
@@ -405,6 +405,7 @@ function start() {
     nohup_start_done
     return
   fi
+  echo
   warn "应用 ${app_name} 启动失败"
   read -r -t 10 -p "是否查看启动失败日志(y/n):" start_log
   if [[ ${start_log} == "y" ]] || [[ ${start_log} == "Y" ]]; then
@@ -476,7 +477,7 @@ function configure_apm() {
   # shellcheck disable=SC2206
   local array=(${apm_server//:/ })
   # 安装nc命令（用于端口检测）
-  install_command "nc" "${app_workspace}/depend/rpm/nc-1.84-24.el6.x86_64.rpm" "nc"
+  ensure_command "nc" "${app_workspace}/depend/rpm/nc-1.84-24.el6.x86_64.rpm" "nc"
   #检测AMP是否连接通畅
   info "开始检测APM性能监控中心连接性,请等待..."
   echo
@@ -526,36 +527,30 @@ function signal_quit() {
 }
 
 # 安装命令（优先包管理器，失败则用rpm）
-function install_command() {
+function ensure_command() {
   local cmd_name=$1
   local rpm_path=$2
-  local pkg_name=${3:-$1} # 包名默认与命令名相同
+  local pkg_name=${3:-$1}
 
-  # 检查命令是否已安装
   if command -v "$cmd_name" &>/dev/null; then
     return 0
   fi
 
-  warn "未检测到${cmd_name}命令，尝试安装..."
+  warn "未检测到${cmd_name}，尝试安装..."
 
-  # 优先使用系统包管理器安装
   if command -v yum &>/dev/null; then
-    info "使用yum安装${pkg_name}..."
     if yum install -y "$pkg_name"; then
       info "${cmd_name}安装成功"
       return 0
     fi
   elif command -v apt-get &>/dev/null; then
-    info "使用apt-get安装${pkg_name}..."
     if apt-get install -y "$pkg_name"; then
       info "${cmd_name}安装成功"
       return 0
     fi
   fi
 
-  # 包管理器安装失败，使用rpm兜底
-  if [[ -f $rpm_path ]]; then
-    info "使用rpm安装${cmd_name}..."
+  if [[ -f $rpm_path && -x "$(command -v rpm)" ]]; then
     if rpm -ivh "$rpm_path"; then
       info "${cmd_name}安装成功"
       return 0
@@ -571,6 +566,8 @@ function clean_app() {
   rm -f "${app_pid_dir:?}/${app_pid_file:?}"
   #删除应用的.out文件
   rm -f "${app_log_dir:?}/${app_nohup_file:?}"
+  # 确保光标显示
+  echo -en "${c_show_cursor}"
 }
 
 #计算固定宽度
@@ -605,7 +602,7 @@ function stop() {
     return
   fi
   #检测bc命令是否安装
-  install_command "bc" "${app_workspace}/depend/rpm/bc-1.06.95-13.el7.x86_64.rpm" "bc"
+  ensure_command "bc" "${app_workspace}/depend/rpm/bc-1.06.95-13.el7.x86_64.rpm" "bc"
   #暂存应用pid值
   local java_temp_pid=${java_pid}
   #停止应用
